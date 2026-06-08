@@ -37,6 +37,30 @@
   button.danger{color:#ff8b7d;border-color:#3a2422}
   .meta{margin-left:auto;color:var(--muted);font-size:12px}
   .note{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.7;border-top:1px solid var(--line);padding-top:18px}
+
+  /* ── 일자별 통계 ── */
+  .daily{margin-top:30px}
+  .daily-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .daily-head h2{font-size:15px;font-weight:700;letter-spacing:-.3px}
+  .daily-head .meta{margin-left:auto;color:var(--muted);font-size:12px}
+  .legend{display:flex;gap:14px;margin-bottom:14px;font-size:12px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .legend .a{background:var(--accent)}
+  .legend .i{background:#5fa8ff}
+  .rows{display:flex;flex-direction:column;gap:2px}
+  .row{display:grid;grid-template-columns:62px 1fr 58px;align-items:center;gap:10px;
+       padding:7px 0;border-bottom:1px solid #1c201d}
+  .row .date{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .row .date .dow{margin-left:5px;font-size:11px}
+  .row.weekend .date{color:#e0a35f}
+  .barwrap{height:18px;border-radius:5px;background:#161917;overflow:hidden;display:flex}
+  .barwrap .seg{height:100%}
+  .barwrap .seg.a{background:var(--accent)}
+  .barwrap .seg.i{background:#5fa8ff}
+  .row .tot{text-align:right;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+  .row.zero .tot{color:#4a514b;font-weight:500}
+  .daily-empty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center}
 </style>
 </head>
 <body>
@@ -68,6 +92,20 @@
     <span class="meta" id="updated"></span>
   </div>
 
+  <div class="daily">
+    <div class="daily-head">
+      <h2>일자별 스캔 (적재 시작일~오늘)</h2>
+      <span class="meta" id="dailyMeta"></span>
+    </div>
+    <div class="legend">
+      <span><i class="a"></i>Android</span>
+      <span><i class="i"></i>iPhone</span>
+    </div>
+    <div class="rows" id="rows">
+      <div class="daily-empty">불러오는 중…</div>
+    </div>
+  </div>
+
   <div class="note">
     키: <code id="keyinfo"></code><br>
     · 카운트는 페이지가 열릴 때 +1 됩니다(재방문/새로고침도 +1).<br>
@@ -83,6 +121,40 @@
   };
   var GET = "https://countapi.mileshilliard.com/api/v1/get/";
   var SET = "https://countapi.mileshilliard.com/api/v1/set/";
+
+  // ── 적재 시작일 (YYYY, M, D) — KST 기준 ──
+  // 새 index.html을 배포한 날로 맞추세요. 이 날부터 오늘까지 일별로 보여줍니다.
+  // (월은 0부터: 1월=0, 6월=5. 아래는 2026-06-08 예시)
+  var START_DATE = { y: 2026, m: 5, d: 8 };
+
+  // KST(UTC+9) 기준 Date 객체 반환
+  function kstNow(){
+    var n = new Date();
+    return new Date(n.getTime() + (n.getTimezoneOffset() * 60000) + (9 * 3600000));
+  }
+  // Date → "YYYYMMDD"
+  function ymd(d){
+    var y = d.getFullYear();
+    var m = ("0" + (d.getMonth() + 1)).slice(-2);
+    var dd = ("0" + d.getDate()).slice(-2);
+    return "" + y + m + dd;
+  }
+  var DOW = ["일","월","화","수","목","금","토"];
+
+  // 적재 시작일 ~ 오늘(KST) 날짜 배열 (최신순). loadDaily/resetAll 공용.
+  function buildDates(){
+    var today = kstNow();
+    today.setHours(0,0,0,0);
+    var start = new Date(START_DATE.y, START_DATE.m, START_DATE.d);
+    start.setHours(0,0,0,0);
+    if(start.getTime() > today.getTime()) start = new Date(today.getTime());
+    var arr = [];
+    for(var t = today.getTime(); t >= start.getTime(); t -= 86400000){
+      arr.push(new Date(t));
+    }
+    if(arr.length > 400) arr = arr.slice(0, 400);
+    return arr;
+  }
 
   document.getElementById('keyinfo').textContent = KEYS.aos + " / " + KEYS.ios;
 
@@ -114,12 +186,87 @@
     var now = new Date();
     document.getElementById('updated').textContent =
       "업데이트 " + now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+
+    loadDaily();
+  }
+
+  async function loadDaily(){
+    var rowsEl = document.getElementById('rows');
+    rowsEl.innerHTML = '<div class="daily-empty">불러오는 중…</div>';
+
+    // 적재 시작일 ~ 오늘(KST)까지, 최신순
+    var dates = buildDates();
+
+    // 모든 날짜의 aos/ios 키를 병렬 조회
+    var jobs = [];
+    dates.forEach(function(d){
+      var key = ymd(d);
+      jobs.push(readKey(KEYS.aos + "_" + key));
+      jobs.push(readKey(KEYS.ios + "_" + key));
+    });
+
+    var results;
+    try{ results = await Promise.all(jobs); }
+    catch(e){ results = null; }
+
+    if(!results){
+      rowsEl.innerHTML = '<div class="daily-empty">일자별 데이터를 불러오지 못했습니다 (네트워크 오류).</div>';
+      return;
+    }
+
+    // 결과 정리 + 최댓값 계산(막대 스케일용)
+    var data = [];
+    var maxTot = 1;
+    for(var j=0;j<dates.length;j++){
+      var a = results[j*2]   || 0;
+      var i = results[j*2+1] || 0;
+      var tot = a + i;
+      if(tot > maxTot) maxTot = tot;
+      data.push({ date: dates[j], a: a, i: i, tot: tot });
+    }
+
+    // 렌더
+    var html = "";
+    var sumA = 0, sumI = 0;
+    data.forEach(function(r){
+      sumA += r.a; sumI += r.i;
+      var dow = r.date.getDay();
+      var isWeekend = (dow === 0 || dow === 6);
+      var label = ("0"+(r.date.getMonth()+1)).slice(-2) + "/" + ("0"+r.date.getDate()).slice(-2);
+      var aW = (r.a / maxTot) * 100;
+      var iW = (r.i / maxTot) * 100;
+      html +=
+        '<div class="row' + (isWeekend?' weekend':'') + (r.tot===0?' zero':'') + '">' +
+          '<div class="date">' + label + '<span class="dow">' + DOW[dow] + '</span></div>' +
+          '<div class="barwrap" title="Android ' + r.a + ' / iPhone ' + r.i + '">' +
+            '<div class="seg a" style="width:' + aW + '%"></div>' +
+            '<div class="seg i" style="width:' + iW + '%"></div>' +
+          '</div>' +
+          '<div class="tot">' + r.tot.toLocaleString() + '</div>' +
+        '</div>';
+    });
+
+    rowsEl.innerHTML = html;
+    var first = dates[dates.length-1], last = dates[0];
+    function md(d){ return ("0"+(d.getMonth()+1)).slice(-2)+"/"+("0"+d.getDate()).slice(-2); }
+    document.getElementById('dailyMeta').textContent =
+      md(first) + "~" + md(last) + " · " + dates.length + "일 · 합계 " + (sumA + sumI).toLocaleString() +
+      " (A " + sumA.toLocaleString() + " / i " + sumI.toLocaleString() + ")";
   }
 
   async function resetAll(){
-    if(!confirm("AOS / iOS 카운트를 모두 0으로 초기화할까요? 되돌릴 수 없습니다.")) return;
+    if(!confirm("AOS / iOS 카운트(누적 + 적재 시작일부터 오늘까지 일자별)를 모두 0으로 초기화할까요? 되돌릴 수 없습니다.")) return;
+    // 누적
     await fetch(SET + KEYS.aos + "?value=0", {cache:"no-store"});
     await fetch(SET + KEYS.ios + "?value=0", {cache:"no-store"});
+    // 일자별 (시작일~오늘)
+    var jobs = [];
+    buildDates().forEach(function(d){
+      var key = ymd(d);
+      jobs.push(fetch(SET + KEYS.aos + "_" + key + "?value=0", {cache:"no-store"}));
+      jobs.push(fetch(SET + KEYS.ios + "_" + key + "?value=0", {cache:"no-store"}));
+    });
+    try{ await Promise.all(jobs); }catch(e){}
     load();
   }
 

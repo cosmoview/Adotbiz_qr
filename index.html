@@ -74,6 +74,16 @@
   var COUNT_API = "https://countapi.mileshilliard.com/api/v1/hit/";
   // ──────────────────────────────────────────────────────
 
+  // KST(UTC+9) 기준 오늘 날짜를 YYYYMMDD로 반환
+  function kstDateKey(){
+    var now = new Date();
+    var kst = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 3600000));
+    var y = kst.getFullYear();
+    var m = ("0" + (kst.getMonth() + 1)).slice(-2);
+    var d = ("0" + kst.getDate()).slice(-2);
+    return "" + y + m + d;
+  }
+
   var params = new URLSearchParams(location.search);
   var os = (params.get('os') || 'aos').toLowerCase();
   if (os !== 'ios') os = 'aos';
@@ -83,8 +93,11 @@
   document.getElementById('storeBtn').href = STORES[os];
 
   // 1) 스캔 카운트 +1 (keepalive로 페이지 이탈 후에도 전송 보장)
+  //    - 누적 키 + 오늘 날짜 키, 둘 다 +1
   try {
-    fetch(COUNT_API + COUNT_KEYS[os], { keepalive: true, cache: "no-store" });
+    var dayKey = kstDateKey();
+    fetch(COUNT_API + COUNT_KEYS[os], { keepalive: true, cache: "no-store" });               // 전체 누적
+    fetch(COUNT_API + COUNT_KEYS[os] + "_" + dayKey, { keepalive: true, cache: "no-store" }); // 일자별
   } catch(e){}
 
   // 2) 잠깐 뒤 앱 실행
