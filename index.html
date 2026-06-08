@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A.Biz 설치</title>
+<style>
+  :root{
+    --bg:#0f1110; --fg:#f4f6f3; --muted:#9aa39c;
+    --accent:#c8ff3d; --line:#262b27;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;
+  }
+  .card{max-width:360px;width:100%;text-align:center}
+  .dot{
+    width:54px;height:54px;border-radius:14px;margin:0 auto 22px;
+    background:var(--accent);color:#0f1110;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:22px;letter-spacing:-.5px;
+  }
+  h1{font-size:19px;font-weight:700;letter-spacing:-.4px;margin-bottom:8px}
+  p{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:28px}
+  .spinner{
+    width:26px;height:26px;margin:0 auto 28px;
+    border:3px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn{
+    display:block;width:100%;padding:15px;border-radius:12px;
+    background:var(--accent);color:#0f1110;font-weight:700;font-size:15px;
+    text-decoration:none;border:none;cursor:pointer;margin-bottom:10px;
+  }
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:500}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="dot">A.</div>
+    <div id="loading">
+      <div class="spinner"></div>
+      <h1>A.Biz 앱을 여는 중…</h1>
+      <p>잠시만 기다려 주세요.<br>앱이 자동으로 열리지 않으면 아래 버튼을 눌러주세요.</p>
+    </div>
+    <div id="fallback" class="hidden">
+      <h1>앱이 열리지 않았나요?</h1>
+      <p>A.Biz(또는 T전화) 앱이 설치되어 있어야 바로 이동합니다.</p>
+    </div>
+    <a id="openBtn" class="btn" href="#">A.Biz 앱 열기</a>
+    <a id="storeBtn" class="btn ghost" href="#" target="_blank" rel="noopener">스토어에서 설치하기</a>
+  </div>
+
+<script>
+(function(){
+  // ── 설정 ──────────────────────────────────────────────
+  var SCHEMES = {
+    aos: "toktok://com.skt.pe.activity.mobileclient.detail?appId=A000S00050",
+    ios: "I000ST0006://detail?appId=I000S00089"
+  };
+  var STORES = {  // 미설치 폴백 (실제 A.Biz 스토어 URL로 교체)
+    aos: "https://play.google.com/store/apps/details?id=YOUR_PACKAGE",
+    ios: "https://apps.apple.com/app/idYOUR_APP_ID"
+  };
+  // 카운터 키 — 대시보드와 반드시 동일해야 함
+  var COUNT_KEYS = {
+    aos: "skt_abiz_qr_be7712e8_aos",
+    ios: "skt_abiz_qr_be7712e8_ios"
+  };
+  var COUNT_API = "https://countapi.mileshilliard.com/api/v1/hit/";
+  // ──────────────────────────────────────────────────────
+
+  var params = new URLSearchParams(location.search);
+  var os = (params.get('os') || 'aos').toLowerCase();
+  if (os !== 'ios') os = 'aos';
+
+  var scheme = SCHEMES[os];
+  document.getElementById('openBtn').href = scheme;
+  document.getElementById('storeBtn').href = STORES[os];
+
+  // 1) 스캔 카운트 +1 (keepalive로 페이지 이탈 후에도 전송 보장)
+  try {
+    fetch(COUNT_API + COUNT_KEYS[os], { keepalive: true, cache: "no-store" });
+  } catch(e){}
+
+  // 2) 잠깐 뒤 앱 실행
+  setTimeout(function(){ window.location.href = scheme; }, 400);
+
+  // 3) 안 열리면 폴백 화면
+  setTimeout(function(){
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('fallback').classList.remove('hidden');
+  }, 2500);
+})();
+</script>
+</body>
+</html>

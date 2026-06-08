@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A.Biz QR 스캔 카운트</title>
+<style>
+  :root{
+    --bg:#0f1110; --fg:#f4f6f3; --muted:#9aa39c;
+    --accent:#c8ff3d; --line:#262b27; --card:#16191700;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--fg); min-height:100vh; padding:32px 20px;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",sans-serif;
+  }
+  .wrap{max-width:520px;margin:0 auto}
+  .head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .dot{width:38px;height:38px;border-radius:10px;background:var(--accent);color:#0f1110;
+       display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px}
+  h1{font-size:18px;font-weight:700;letter-spacing:-.4px}
+  .sub{color:var(--muted);font-size:13px;margin:4px 0 26px 50px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .box{border:1px solid var(--line);border-radius:16px;padding:20px 18px}
+  .box .label{font-size:13px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:7px}
+  .pill{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--line);color:var(--fg)}
+  .num{font-size:40px;font-weight:800;letter-spacing:-1.5px;line-height:1}
+  .num.loading{color:var(--muted);font-size:22px;font-weight:500}
+  .total{border-color:#3a4a16;background:linear-gradient(180deg,rgba(200,255,61,.07),transparent)}
+  .total .num{color:var(--accent)}
+  .bar{display:flex;gap:10px;margin-top:18px;align-items:center}
+  button{
+    font:inherit;cursor:pointer;border-radius:10px;padding:11px 16px;border:1px solid var(--line);
+    background:transparent;color:var(--fg);font-size:14px;font-weight:600;
+  }
+  button.primary{background:var(--accent);color:#0f1110;border-color:var(--accent)}
+  button.danger{color:#ff8b7d;border-color:#3a2422}
+  .meta{margin-left:auto;color:var(--muted);font-size:12px}
+  .note{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.7;border-top:1px solid var(--line);padding-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="dot">A.</div>
+    <h1>A.Biz QR 스캔 카운트</h1>
+  </div>
+  <div class="sub">QR이 열린 횟수(≈스캔 수)를 OS별로 보여줍니다.</div>
+
+  <div class="grid">
+    <div class="box">
+      <div class="label">Android <span class="pill">AOS</span></div>
+      <div class="num loading" id="aos">불러오는 중…</div>
+    </div>
+    <div class="box">
+      <div class="label">iPhone <span class="pill">iOS</span></div>
+      <div class="num loading" id="ios">불러오는 중…</div>
+    </div>
+  </div>
+  <div class="box total">
+    <div class="label">합계</div>
+    <div class="num loading" id="total">—</div>
+  </div>
+
+  <div class="bar">
+    <button class="primary" onclick="load()">새로고침</button>
+    <button class="danger" onclick="resetAll()">0으로 초기화</button>
+    <span class="meta" id="updated"></span>
+  </div>
+
+  <div class="note">
+    키: <code id="keyinfo"></code><br>
+    · 카운트는 페이지가 열릴 때 +1 됩니다(재방문/새로고침도 +1).<br>
+    · 무료 공개 카운터(countapi.mileshilliard.com)를 사용합니다. 키를 아는 사람은 값을 볼 수 있으니 민감정보는 넣지 마세요.
+  </div>
+</div>
+
+<script>
+  // 설치 페이지(index.html)의 COUNT_KEYS와 반드시 동일하게 유지하세요.
+  var KEYS = {
+    aos: "skt_abiz_qr_be7712e8_aos",
+    ios: "skt_abiz_qr_be7712e8_ios"
+  };
+  var GET = "https://countapi.mileshilliard.com/api/v1/get/";
+  var SET = "https://countapi.mileshilliard.com/api/v1/set/";
+
+  document.getElementById('keyinfo').textContent = KEYS.aos + " / " + KEYS.ios;
+
+  async function readKey(key){
+    try{
+      var r = await fetch(GET + key, {cache:"no-store"});
+      if(r.status === 404) return 0;          // 아직 한 번도 안 찍힘
+      var d = await r.json();
+      return parseInt(d.value, 10) || 0;
+    }catch(e){ return null; }                  // 네트워크 오류
+  }
+
+  function render(id, v){
+    var el = document.getElementById(id);
+    el.classList.remove('loading');
+    el.textContent = (v === null) ? "오류" : v.toLocaleString();
+    return v || 0;
+  }
+
+  async function load(){
+    document.querySelectorAll('.num').forEach(function(e){e.classList.add('loading');e.textContent="…";});
+    var a = await readKey(KEYS.aos);
+    var i = await readKey(KEYS.ios);
+    var av = render('aos', a);
+    var iv = render('ios', i);
+    var t = document.getElementById('total');
+    t.classList.remove('loading');
+    t.textContent = (av + iv).toLocaleString();
+    var now = new Date();
+    document.getElementById('updated').textContent =
+      "업데이트 " + now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  async function resetAll(){
+    if(!confirm("AOS / iOS 카운트를 모두 0으로 초기화할까요? 되돌릴 수 없습니다.")) return;
+    await fetch(SET + KEYS.aos + "?value=0", {cache:"no-store"});
+    await fetch(SET + KEYS.ios + "?value=0", {cache:"no-store"});
+    load();
+  }
+
+  load();
+</script>
+</body>
+</html>
